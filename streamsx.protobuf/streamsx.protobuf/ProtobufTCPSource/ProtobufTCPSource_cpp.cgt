@@ -1,0 +1,190 @@
+/* Additional includes go here */
+
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+<%
+
+my $outputAttribute = "";
+
+if (defined $model->getOutputPortAt(0)) {
+    sub getOutputAttribute {
+        my $outputPort = $model->getOutputPortAt(0);
+        for my $attribute (@{$outputPort->getAttributes()}) {
+            if (SPL::CodeGen::Type::isBlob($attribute->getSPLType())) {
+                return $attribute->getName();
+            }
+        }
+
+        die("Output port 0 must contain a blob type");
+    }
+
+    $outputAttribute = getOutputAttribute();
+} else {
+    die("Need to have an output port attached");
+}
+
+my $port = $model->getParameterByName("port")->getValueAt(0)->getCppExpression();
+
+%>
+
+// Constructor
+MY_OPERATOR::MY_OPERATOR()
+: io_service_(), endpoint(tcp::v4(), <%=$port%>), acceptor_(io_service_, endpoint)
+{
+    // Initialization code goes here    
+    OperatorMetrics & opm = getContext().getMetrics();
+    nConnections = &opm.createCustomMetric("nConnections", "Number of connections currently active", Metric::Counter);
+}
+
+// Destructor
+MY_OPERATOR::~MY_OPERATOR() 
+{
+    // Finalization code goes here
+}
+
+// Notify port readiness
+void MY_OPERATOR::allPortsReady() 
+{
+    // Create worker thread
+    createThreads(1);
+}
+ 
+// Notify pending shutdown
+void MY_OPERATOR::prepareToShutdown() 
+{
+    // This is an asynchronous call
+    io_service_.stop();
+}
+
+void MY_OPERATOR::waitForConnection() {
+    tcp::socket *socket = new tcp::socket(io_service_);
+    MY_OPERATOR::ProtobufMessage *message = new MY_OPERATOR::ProtobufMessage;
+    acceptor_.async_accept(*socket,
+        streams_boost::bind(&MY_OPERATOR::handleConnection, this, socket, message, streams_boost::asio::placeholders::error)
+    );
+    SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Waiting for connection.", "");
+}
+
+void MY_OPERATOR::handleConnection(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec) {
+    SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Connection accepted.", "");
+    if (!ec) {
+        nConnections->incrementValue();
+        streams_boost::asio::async_read(*socket,
+            streams_boost::asio::buffer(&message->header.buffer, 4),
+            streams_boost::bind(&MY_OPERATOR::handleHeader, this, socket, message, streams_boost::asio::placeholders::error)
+        );
+    } else if (socket->is_open()) {
+        socket->close();
+        delete socket;
+        SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Connection closed.", "");
+    }
+
+    this->waitForConnection();
+}
+
+void MY_OPERATOR::handleHeader(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec) {
+    SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Received header.", "");
+    if (!ec) {
+        if (message->bufferSize < message->header.length) {
+            if (message->data != NULL) {
+                delete message->data;
+            }
+
+            message->data = new unsigned char[message->header.length];
+            message->bufferSize = message->header.length;
+        }
+        SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Expected length " << message->header.length, "");
+        streams_boost::asio::async_read(*socket,
+            streams_boost::asio::buffer(message->data, message->header.length),
+            streams_boost::bind(&MY_OPERATOR::handleMessage, this, socket, message, streams_boost::asio::placeholders::error)
+        );
+    } else if (socket->is_open()) {
+        if (message != NULL) {
+            if (message->data != NULL) {
+                delete message->data;
+            }
+            delete message;
+        }
+
+        socket->close();
+        delete socket;
+        nConnections->incrementValue(-1);
+        SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Connection closed.", "");
+    } else {
+        nConnections->incrementValue(-1);
+    }
+}
+
+void MY_OPERATOR::handleMessage(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec) {
+    SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Received message body", "");
+    if (!ec) {
+        OPort0Type outTuple;
+        SPL::blob blobBuffer(message->data, message->header.length);
+        outTuple.set_<%=$outputAttribute%>(blobBuffer);
+        submit(outTuple, 0);
+
+        SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Waiting for next header", "");
+        streams_boost::asio::async_read(*socket,
+            streams_boost::asio::buffer(&message->header.buffer, 4),
+            streams_boost::bind(&MY_OPERATOR::handleHeader, this, socket, message, streams_boost::asio::placeholders::error)
+        );
+    } else if (socket->is_open()) {
+        if (message != NULL) {
+            if (message->data != NULL) {
+                delete message->data;
+            }
+            delete message;
+        }
+
+        socket->close();
+        delete socket;
+        nConnections->incrementValue(-1);
+        SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Connection closed.", "");
+    } else {
+        nConnections->incrementValue(-1);
+    }
+}
+
+// Processing for source and threaded operators   
+void MY_OPERATOR::process(uint32_t idx)
+{
+    if (idx == 0) {
+        try {
+            SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Starting server on port " << <%=$port%>, "");
+
+            this->waitForConnection();
+            SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Running I/O service.", "");
+
+            io_service_.run();
+        } catch (std::exception & e) {
+            std::cerr << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Nonstandard exception" << std::endl << std::flush;
+        }
+    } else {
+        // If createThreads(n) is changed to have more threads, this
+        // will have the extra threads support the io_service_ rather
+        // than attempting to bind to the TCP port again.
+
+        sleep(5);
+        SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Starting I/O service worker thread: " << idx, "");
+        io_service_.run();
+    }
+}
+
+// Tuple processing for mutating ports 
+void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
+{
+}
+
+// Tuple processing for non-mutating ports
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+}
+
+// Punctuation processing
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
+{
+}
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

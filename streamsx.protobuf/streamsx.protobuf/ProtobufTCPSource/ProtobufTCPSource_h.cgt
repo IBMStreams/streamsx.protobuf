@@ -1,0 +1,68 @@
+/* Additional includes go here */
+
+#include <pthread.h>
+#include <queue>
+
+#include <streams_boost/asio.hpp>
+#include <streams_boost/asio/ip/tcp.hpp>
+#include <streams_boost/bind.hpp>
+
+<%SPL::CodeGen::headerPrologue($model);%>
+
+using namespace streams_boost::asio;
+using namespace streams_boost::asio::ip;
+
+
+class MY_OPERATOR : public MY_BASE_OPERATOR 
+{
+public:
+  typedef struct {
+      union {
+          unsigned char buffer[4];
+          uint32_t length;
+      } header;
+      unsigned char *data;
+      uint32_t bufferSize;
+  } ProtobufMessage;
+
+  // Constructor
+  MY_OPERATOR();
+
+  // Destructor
+  virtual ~MY_OPERATOR(); 
+
+  // Notify port readiness
+  void allPortsReady(); 
+
+  // Submit a tuple
+  static void * tupleSubmit(void * voidPtr);
+
+  // Notify termination
+  void prepareToShutdown(); 
+
+  void waitForConnection();
+  void handleConnection(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec);
+  void handleHeader(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec);
+  void handleMessage(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec);
+
+  // Processing for source and threaded operators   
+  void process(uint32_t idx);
+    
+  // Tuple processing for mutating ports 
+  void process(Tuple & tuple, uint32_t port);
+    
+  // Tuple processing for non-mutating ports
+  void process(Tuple const & tuple, uint32_t port);
+
+  // Punctuation processing
+  void process(Punctuation const & punct, uint32_t port);
+
+  streams_boost::asio::io_service io_service_;
+  tcp::endpoint endpoint;
+  tcp::acceptor acceptor_;
+
+  Metric *nConnections;
+}; 
+
+<%SPL::CodeGen::headerEpilogue($model);%>
+

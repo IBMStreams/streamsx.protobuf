@@ -1,0 +1,352 @@
+/* Additional includes go here */
+<%
+unshift @INC, dirname($model->getContext()->getOperatorDirectory()) . "/Common";
+require ParseTreeGen;
+
+my $opName = $model->getContext()->getKind . " " . $model->getContext()->getClass();
+%>
+
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+<%
+
+sub generateVariableName {
+    my $letters = ['a' .. 'z', 'A' .. 'Z'];
+    my $total = scalar @{$letters};
+    my $varName = [];
+
+    foreach ((1 .. 20)) {
+        push @{$varName}, $letters->[rand $total];
+    }
+
+    return join("", @{$varName});
+}
+
+my $appDirectory = $model->getContext()->getApplicationDirectory();
+my $relDirectory = $appDirectory;
+
+$relDirectory =~ s/(^\"|\"$)//g;
+$relDirectory =~ s/\/$//g;
+
+my $protoDirectory = "";
+if (defined $model->getParameterByName("protoDirectory")) {
+    $protoDirectory = $model->getParameterByName("protoDirectory")->getValueAt(0)->getSPLExpression();
+    $protoDirectory =~ s/\"//g;
+    unless ($protoDirectory =~ /^\//) {
+        $protoDirectory = $relDirectory . "/" . $model->getParameterByName("protoDirectory")->getValueAt(0)->getSPLExpression();
+    }
+} else {
+    $protoDirectory = $relDirectory;
+}
+
+my $cppDirectory = $model->getContext()->getApplicationDirectory() . "/impl/include";
+my $libDirectory = $model->getContext()->getApplicationDirectory() . "/impl/lib";
+my $protoRootFile = $model->getParameterByName("protoRootFile")->getValueAt(0)->getSPLExpression();
+
+$protoRootFile =~ s/\"//g;
+$protoDirectory =~ s/\"//g;
+my $protoRootSource = $protoDirectory . "/" . $protoRootFile;
+
+my $protos = ParseTreeGen::parseProtoFile($protoDirectory, $protoRootFile);
+
+my $protoFileList = "";
+foreach my $file (@{$protos->{"files"}}) {
+    $protoFileList .= "$protoDirectory/$file ";
+}
+
+SPL::CodeGen::println("[$opName] Creating impl/lib and impl/include directories");
+`mkdir -p $cppDirectory`;
+`mkdir -p $libDirectory`;
+
+my $protocCommand = "protoc --proto_path=$protoDirectory --cpp_out=$cppDirectory $protoFileList";
+SPL::CodeGen::println("[$opName] Running command:\n  $protocCommand");
+`$protocCommand`;
+
+# Generate includes
+print "// Protoc generated headers go here:\n";
+foreach my $file (@{$protos->{"files"}}) {
+    $file =~ s/proto$/pb.h/;
+    print "#include \"$file\"\n";
+}
+
+my $STREAMSX_PROTOBUF_LIBPATH = $ENV{"STREAMSX_PROTOBUF_LIBPATH"};
+my $STREAMSX_PROTOBUF_INCLUDEPATH = $ENV{"STREAMSX_PROTOBUF_INCLUDEPATH"};
+my $gccCommand = "g++ -O3 -c -fPIC ";
+foreach my $file (@{$protos->{"files"}}) {
+    $file =~ s/pb\.h$/pb.cc/;
+    $gccCommand .= $cppDirectory . "/" . $file . " ";
+}
+$gccCommand .= "-I $cppDirectory -I $STREAMSX_PROTOBUF_INCLUDEPATH -L$STREAMSX_PROTOBUF_LIBPATH -lprotobuf -lprotoc";
+
+SPL::CodeGen::println("[$opName] Running command:\n  $gccCommand");
+`$gccCommand`;
+
+my $oFiles = [];
+foreach my $file (@{$protos->{"files"}}) {
+    $file =~ s/pb\.cc$/pb.o/;
+    push @{$oFiles}, $file;
+}
+
+my $linkCommand = "g++ -O3 *.pb.o ";
+$linkCommand .= "-shared -o $libDirectory/libcustomproto.so -L$libDirectory -L$STREAMSX_PROTOBUF_LIBPATH -lprotobuf -lprotoc";
+
+SPL::CodeGen::println("[$opName] Running command:\n  $linkCommand");
+`$linkCommand`;
+
+my $rmCommand = "rm *.pb.o";
+SPL::CodeGen::println("[$opName] Running command:\n  $rmCommand");
+`$rmCommand`;
+
+sub generateVariableMapping {
+    my $field = shift;
+    my $protos = shift;
+    my $splType = shift;
+    my $protoGetter = shift;
+    my $assign = shift;
+    my $depth = shift or 1;
+
+    print "\n" . "\t"x$depth . "// Generating mapping for \"". $field->{"name"} ."\"=[". $field->{"dataType"} . "]:\n";
+    if ($field->{"type"} =~ /^(primitive|complex|enum)$/) {
+        if ($model->getContext()->isVerboseModeOn()) {
+            SPL::CodeGen::println("[$opName] Mapping " . $field->{"dataType"} . "=[" . $field->{"type"} . "]");
+        }
+
+        if ($field->{"label"} eq "repeated") {
+            my $listName = generateVariableName();
+            print "\t"x$depth . "$splType $listName;\n";
+
+            my $iVar = generateVariableName();
+            my $sizeVar = generateVariableName();
+            print "\t"x$depth . "int $sizeVar = $protoGetter." . lc($field->{"name"}) . "_size();\n";
+            print "\t"x$depth . "$listName.reserve($sizeVar);\n";
+            print "\t"x$depth . "for (int $iVar = 0; $iVar < $sizeVar; $iVar++) {\n";
+
+            my $newField = {
+                "label" => "required",
+                "type" => $field->{"type"},
+                "dataType" => $field->{"dataType"},
+                "name" => "",
+            };
+            my $newSplType = "${splType}::value_type";
+            my $newProtoGetter = "$protoGetter." . lc($field->{"name"}) . "($iVar)";
+            if (($field->{"type"} ne "primitive") and (not defined($protos->{"enums"}->{$field->{"dataType"}}))) {
+                my $gottenVariable = generateVariableName();
+                my $gottenType = join("::", split(/\./, $field->{"dataType"}));
+                print "\t"x($depth+1) . "const $gottenType *$gottenVariable = &($protoGetter." . lc($field->{"name"}) . "($iVar));\n";
+                $newProtoGetter = "(*$gottenVariable)";
+            }
+            my $newAssign = sub {
+                print "\t"x($depth+1) . "$listName.push_back($_[0]);\n";
+            };
+            generateVariableMapping($newField, $protos, $newSplType, $newProtoGetter, $newAssign, $depth + 1);
+
+            print "\t"x$depth . "}\n";
+            $assign->($listName) . "\n";
+
+        } else {
+            if ($field->{"type"} eq "primitive") { # We have a primitive field (easy!)
+                if ($field->{"dataType"} eq "blob") {
+                    my $assignmentValue = "$protoGetter";
+                    unless ($field->{"name"} eq "") {
+                        $assignmentValue = "$protoGetter." . $field->{"name"} . "()";
+                    }
+
+                    my $blobValue = "SPL::blob((const unsigned char *) $assignmentValue.data(), $assignmentValue.size())";
+                    $assign->($blobValue);
+                } else {
+                    my $assignmentValue = "$protoGetter";
+                    unless ($field->{"name"} eq "") {
+                        $assignmentValue = "$protoGetter." . lc($field->{"name"}) . "()";
+                    }
+                    $assign->($assignmentValue);
+                }
+
+            } elsif (defined $protos->{"enums"}->{$field->{"dataType"}}) {
+                my $assignmentValue = "$protoGetter";
+                unless ($field->{"name"} eq "") {
+                    $assignmentValue = "$protoGetter." . lc($field->{"name"}) . "()";
+                }
+                print "\t"x$depth . "switch ($assignmentValue) {\n";
+
+                #print "\t"x$depth . "switch ($protoGetter." . $field->{"name"} . "()) {\n";
+
+                my $enum = $protos->{"enums"}->{$field->{"dataType"}};
+                my $enumPackage = join("::", split(/\./, $enum->{"package"}));
+                print "\t"x$depth . "// Switch case for \"" . $enum->{"fqdn"} . "\"\n";
+                foreach my $enumVal (@{$enum->{"fields"}}) {
+                    print "\t"x($depth+1) . "case ${enumPackage}::" . $enumVal->{"name"} . ":\n";
+                    print "\t\t";
+                    $assign->("${splType}::" . $enumVal->{"name"} . "_");
+                    print "\t"x($depth+2) . "break;\n";
+                }
+
+                print "\t"x$depth . "}\n";
+
+            } else { # We have a complex message field (yuck!)
+                my $protoField = $protos->{"messages"}->{$field->{"dataType"}};
+
+                my $valName = generateVariableName();
+                print "\t"x($depth) . "$splType $valName;\n";
+
+                my $gottenVariable = generateVariableName();
+                my $gottenType = join("::", split(/\./, $field->{"dataType"}));
+                if ($field->{"name"} eq "") {
+                    print "\t"x$depth . "const $gottenType *$gottenVariable = &($protoGetter);\n";
+                } else {
+                    print "\t"x$depth . "const $gottenType *$gottenVariable = &($protoGetter." . lc($field->{"name"}) . "());\n";
+                }
+
+                foreach my $subField (@{$protoField->{"fields"}}) {
+                    my $newSplType = $splType ."::". $subField->{"name"} ."__type";
+                    my $newProtoGetter = "(*$gottenVariable)";
+                    my $newAssign = sub {
+                        print "\t"x($depth+1) . "$valName.set_". $subField->{"name"} ."_($_[0]);\n";
+                    };
+                    generateVariableMapping($subField, $protos, $newSplType, $newProtoGetter, $newAssign, $depth + 1);
+                }
+
+                print "\n";
+                $assign->($valName);
+            }
+        }
+    } elsif ($field->{"type"} eq "group") {
+        die("<group> keyword is currently unsupported by this operator (It is also deprecated by Google)");
+    } elsif ($field->{"type"} eq "map") {
+        my $mapName = generateVariableName();
+        print "\t"x$depth . "$splType $mapName;\n";
+
+        my $keyType = $field->{"keyCppType"};
+        my $valType = join("::", split(/\./, $field->{"valDataType"}));
+        my $valCppType = $valType;
+        if (defined $field->{"valCppType"}) {
+            $valCppType = $field->{"valCppType"};
+        }
+        my $mapType = "std::map<$keyType, $valCppType>";
+
+        my $iVar = generateVariableName();
+        #print  "\t"x$depth . "for (auto $iVar = $protoGetter." . lc($field->{"name"}) . "().begin();";
+        print  "\t"x$depth . "for (${mapType}::iterator $iVar = $protoGetter." . lc($field->{"name"}) . "().begin();";
+        print " $iVar != $protoGetter." . lc($field->{"name"}) . "().end(); $iVar++) {\n";
+
+            my $newField = {
+                "label" => "required",
+                "type" => $field->{"valType"},
+                "dataType" => $field->{"valDataType"},
+                "name" => "",
+            };
+            
+            my $newSplType = "${splType}::mapped_type";
+            my $newProtoGetter = "$protoGetter." . lc($field->{"name"}) . "[$iVar->first]";
+            my $newAssign = sub {
+                print "\t"x($depth+1) . $mapName . "[" . $iVar . "->first] = $_[0];\n";
+            };
+            generateVariableMapping($newField, $protos, $newSplType, $newProtoGetter, $newAssign, $depth + 1);
+
+        print "\t"x$depth . "}\n";
+        $assign->($mapName) . "\n";
+        #die("<map> keyword is currently unsupported by this operator");
+    } elsif ($field->{"type"} eq "oneof") {
+        die("<oneof> keyword is currently unsupported by this operator");
+    }
+}
+
+###############################################
+# End of the Perl variable mapping generation #
+###############################################
+
+%>
+
+// Constructor
+MY_OPERATOR::MY_OPERATOR()
+{
+    // Initialization code goes here
+}
+
+// Destructor
+MY_OPERATOR::~MY_OPERATOR() 
+{
+    // Finalization code goes here
+}
+
+// Notify port readiness
+void MY_OPERATOR::allPortsReady() 
+{
+    // Notifies that all ports are ready. No tuples should be submitted before
+    // this. Source operators can use this method to spawn threads.
+
+    /*
+      createThreads(1); // Create source thread
+    */
+}
+ 
+// Notify pending shutdown
+void MY_OPERATOR::prepareToShutdown() 
+{
+    // This is an asynchronous call
+}
+
+// Processing for source and threaded operators   
+void MY_OPERATOR::process(uint32_t idx)
+{
+    // A typical implementation will loop until shutdown
+    /*
+      while(!getPE().getShutdownRequested()) {
+          // do work ...
+      }
+    */
+}
+
+// Tuple processing for mutating ports 
+void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
+{
+}
+
+// Tuple processing for non-mutating ports
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+    const IPort0Type & inTuple = static_cast<const IPort0Type &>(tuple);
+
+    <%
+    my $dataAttribute = $model->getParameterByName("dataAttribute")->getValueAt(0)->getCppExpression();
+    my $dataExpression = SPL::CodeGen::adaptCppExpression($dataAttribute, "tuple");
+
+    my $rootMessage = $model->getParameterByName("protoMessage")->getValueAt(0)->getSPLExpression();
+    $rootMessage =~ s/\"//g;
+    my $package = $protos->{"messages"}->{$rootMessage}->{"package"};
+
+    my @splitPackage = split(/\./, $package);
+    $package = join("::", @splitPackage);
+
+    my $rootVarName = generateVariableName();
+    %>
+
+    <%=$package%>::<%=$protos->{"messages"}->{$rootMessage}->{"name"}%> <%=$rootVarName%>;
+    <%=$rootVarName%>.ParseFromArray(<%=$dataExpression%>.getData(), (size_t) <%=$dataExpression%>.getSize());
+    OPort0Type outTuple;
+
+    <%
+
+    print "\n";
+    my $rootField = $protos->{"messages"}->{$rootMessage};
+    my $protoGetter = $rootVarName;
+
+    foreach my $field (@{$rootField->{"fields"}}) {
+        my $splType = "OPort0Type::". $field->{"name"} . "__type";
+        my $assign = sub {
+            print "\toutTuple.set_". $field->{"name"} ."_($_[0]);\n";
+        };
+
+        generateVariableMapping($field, $protos, $splType, $protoGetter, $assign, 1);
+    }
+
+    %>
+
+    submit(outTuple, 0);
+}
+
+// Punctuation processing
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
+{
+}
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

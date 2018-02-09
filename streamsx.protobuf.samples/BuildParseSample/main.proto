@@ -1,0 +1,15 @@
+syntax = "proto2";
+
+package streamsx.protobuf.person;
+
+enum PersonCategory {
+    HUMAN = 0;
+    CAT = 1;
+}
+
+message SimplePerson {
+    required string name = 1;
+    required uint64 age = 2;
+    required PersonCategory category = 3;
+    repeated string numbers = 4;
+}

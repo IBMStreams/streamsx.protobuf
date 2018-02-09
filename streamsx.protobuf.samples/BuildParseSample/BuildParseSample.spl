@@ -1,0 +1,40 @@
+use streamsx.protobuf::*;
+
+use streamsx.protobuf.person::*;
+
+/**
+ * To build the SPL schema from the protobuf file, run the bin/spl-schema-from-proto command as follows:
+ * bin/spl-schema-from-proto <proto directory> <path to root protobuf file relative to proto directory>
+ * This will generate the SPL namespaces and types from the protobuf definitions and output a sample
+ * operator invocation to show how it is used.
+ */
+
+composite BuildParseSample {
+    graph
+        stream<SimplePerson_pb> records = Beacon() {
+            param
+                period: 1.0;
+            output
+                records: name_="Methuselah", age_=950ul, category_=PersonCategory_pb.HUMAN_, numbers_=["name"];
+        }
+
+        stream<blob data> serialized = ProtobufBuild(records) {
+            param
+                protoMessage: "streamsx.protobuf.person.SimplePerson";
+                protoDirectory: ".";
+                protoRootFile: "main.proto";
+        }
+
+        stream<SimplePerson_pb> deserialized = ProtobufParse(serialized) {
+            param
+                dataAttribute: data;
+                protoMessage: "streamsx.protobuf.person.SimplePerson";
+                protoDirectory: ".";
+                protoRootFile: "main.proto";
+        }
+
+        () as sink = Custom(deserialized) {
+            logic
+                onTuple deserialized: println(deserialized);
+        }
+}

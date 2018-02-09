@@ -1,0 +1,153 @@
+/* Additional includes go here */
+
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+#include <iostream>
+#include <fstream>
+
+using namespace std;
+
+// Constructor
+MY_OPERATOR::MY_OPERATOR()
+{
+    // Initialization code goes here    
+}
+
+// Destructor
+MY_OPERATOR::~MY_OPERATOR() 
+{
+    // Finalization code goes here
+}
+
+// Notify port readiness
+void MY_OPERATOR::allPortsReady() 
+{
+    // Notifies that all ports are ready. No tuples should be submitted before
+    // this. Source operators can use this method to spawn threads.
+
+    /*
+      createThreads(1); // Create source thread
+    */
+   <% if ((defined $model->getParameterByName("file")) and $model->getParameterByName("file")->getNumberOfValues() > 0) { %>
+   printf("[ProtobufFileSource] Starting threads\n");
+   createThreads(1);
+   <% } %>
+}
+ 
+// Notify pending shutdown
+void MY_OPERATOR::prepareToShutdown() 
+{
+    // This is an asynchronous call
+}
+
+// Processing for source and threaded operators   
+void MY_OPERATOR::process(uint32_t idx)
+{
+    <%
+
+    if ((defined $model->getParameterByName("file")) and $model->getParameterByName("file")->getNumberOfValues() > 0) {
+
+        my $fileName = $model->getParameterByName("file")->getValueAt(0)->getCppExpression();
+
+    %>
+
+
+    printf("[ProtobufFileSource] Parsing parameter file\n");
+    parseFile(<%= $fileName %>.string());
+    while (!getPE().getShutdownRequested()) {
+    }
+
+    <% } %>
+}
+
+// Tuple processing for mutating ports 
+void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
+{
+    <%
+
+    if (defined $model->getInputPortAt(0)) {
+
+        sub getInputAttribute {
+            my $inputPort = $model->getInputPortAt(0);
+            for my $attribute (@{$inputPort->getAttributes()}) {
+                if (SPL::CodeGen::Type::isString($attribute->getSPLType())) {
+                    return $attribute->getName();
+                }
+            }
+
+            die("InputPort0 should contain an rstring field in the base tuple");
+        }
+
+        my $inputAttribute = getInputAttribute();
+
+    %>
+
+    IPort0Type & inTuple = static_cast<IPort0Type &>(tuple);
+
+    parseFile(inTuple.get_<%= $inputAttribute %>().string());
+
+    <% } %>
+
+}
+
+// Tuple processing for non-mutating ports
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+}
+
+// Punctuation processing
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
+{
+}
+
+void MY_OPERATOR::parseFile(std::string file) {
+    OPort0Type outTuple;
+
+
+    //fstream input(file.c_str(), ios::in | ios::binary);
+
+    std::string finalFile = file;
+    if (file[0] != '/') {
+        std::string dataDirectory = SPL::Functions::Utility::dataDirectory().string();
+        finalFile = dataDirectory + "/" + file;
+    }
+    printf("[ProtobufFileSource] Attempting to open file: %s\n", finalFile.c_str());
+    fstream input(finalFile.c_str(), ios::in | ios::binary);
+
+    if (!input) {
+        printf("[ProtobufFileSource] Failed to read file: %s\n", finalFile.c_str());
+        return;
+    }
+
+    uint32_t length = 0;
+    char *cLength = (char *)&length;
+
+    while (input.read(cLength, 4)) {
+        std::string message(length, '\0');
+        input.read((char *)message.data(), length);
+
+        <%
+
+        sub getOutputAttribute {
+            my $outputPort = $model->getOutputPortAt(0);
+            for my $attribute (@{$outputPort->getAttributes()}) {
+                if (SPL::CodeGen::Type::isBlob($attribute->getSPLType())) {
+                    return $attribute->getName();
+                }
+            }
+
+            die("OutputPort0 should contain a blob field in the base tuple");
+        }
+
+        my $outputAttr = getOutputAttribute();
+
+        %>
+
+        outTuple.get_<%= $outputAttr %>().setData((const unsigned char *) message.data(), length);
+
+        submit(outTuple, 0);
+    }
+
+}
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

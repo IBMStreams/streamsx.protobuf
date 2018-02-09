@@ -1,0 +1,14 @@
+use streamsx.protobuf::*;
+
+composite TCPSample {
+    graph
+        stream<blob records> serialized = ProtobufTCPSource() {
+            param
+                port: 8080u;
+        }
+
+        () as sink = Custom(serialized) {
+            logic
+                onTuple serialized: println(serialized);
+        }
+}

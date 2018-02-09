@@ -1,0 +1,74 @@
+<?xml version="1.0" ?>
+<operatorModel
+  xmlns="http://www.ibm.com/xmlns/prod/streams/spl/operator" 
+  xmlns:cmn="http://www.ibm.com/xmlns/prod/streams/spl/common" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.ibm.com/xmlns/prod/streams/spl/operator operatorModel.xsd">
+  <cppOperatorModel>
+    <context> 
+      <!-- some optional elements-->
+      <description><![CDATA[
+`ProtobufTCPSource` takes in a binary dump of Protobuf records in a common, but strict format.
+Each record is prepended by a 4 byte header indicating the length of the Protobuf message, as shown:
+
+    [4 bytes recordLength] [n bytes record] [4 bytes recordLength] [n bytes record] ...
+
+The `port` parameter specifies the port that the server will listen to.
+
+`ProtobufTCPSource` does not support any authentication at this time.
+
++ Examples
+
+# Examples
+
+    stream<blob record> serializedRecords = ProtobufTCPSource() {
+        param
+            port: 8080u;
+    }
+
+]]>
+      </description>
+      <libraryDependencies>
+        <library>
+          <cmn:description>protobuf-server</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>streams_boost_system</cmn:lib>
+            <cmn:lib>streams_boost_thread</cmn:lib>
+            <cmn:lib>streams_boost_regex</cmn:lib>
+            <cmn:lib>streams_boost_serialization</cmn:lib>
+
+            <cmn:libPath>@STREAMS_INSTALL@/ext/lib</cmn:libPath>
+            <cmn:includePath>@STREAMS_INSTALL@/ext/include</cmn:includePath>
+          </cmn:managedLibrary>
+        </library>
+      </libraryDependencies>
+      <providesSingleThreadedContext>Never</providesSingleThreadedContext>
+    </context>  
+    <parameters>
+      <allowAny>false</allowAny>
+      <parameter>
+        <name>port</name>
+        <description>Specifies the port to be used for the TCP server</description>
+        <optional>false</optional>
+        <rewriteAllowed>false</rewriteAllowed>
+        <expressionMode>Constant</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
+    </parameters>
+    <inputPorts>
+    </inputPorts>
+    <outputPorts>
+      <outputPortSet>
+        <expressionMode>Nonexistent</expressionMode> 
+        <autoAssignment>false</autoAssignment>
+        <completeAssignment>false</completeAssignment>
+        <rewriteAllowed>false</rewriteAllowed>
+        <windowPunctuationOutputMode>Free</windowPunctuationOutputMode>
+        <tupleMutationAllowed>true</tupleMutationAllowed>
+        <cardinality>1</cardinality>
+        <optional>false</optional>
+      </outputPortSet>          
+    </outputPorts>
+  </cppOperatorModel>
+</operatorModel>

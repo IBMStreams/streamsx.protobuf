@@ -1,0 +1,538 @@
+%start proto
+
+%token IDENT
+%token INT_LITERAL
+%token FLOAT_LITERAL
+%token STR_LITERAL
+%token BOOL_LITERAL
+
+%%
+
+##############
+# Proto file #
+##############
+
+proto : syntax protoA {
+          return $_[2];
+      };
+protoA : {
+           return {
+               "imports" => [],
+               "package" => "",
+               "options" => [],
+               "defs" => [],
+           };
+       }
+       | import protoA {
+           push @{$_[2]->{"imports"}}, $_[1];
+           return $_[2];
+       }
+       | package protoA {
+           $_[2]->{"package"} = $_[1];
+           return $_[2];
+       }
+       | option protoA {
+           push @{$_[2]->{"options"}}, $_[1];
+           return $_[2];
+       }
+       | topLevelDef protoA {
+           push @{$_[2]->{"defs"}}, $_[1];
+           return $_[2];
+       }
+       | emptyStatement protoA {
+           return $_[2];
+       }
+       ;
+
+topLevelDef : message { return $_[1]; }
+            | enum { return $_[1]; }
+            | extend { return $_[1]; }
+            | service { return $_[1]; }
+            ;
+
+
+#########################
+# Top Level definitions #
+#########################
+
+# Enum definition #
+
+enum : 'enum' enumName enumBody {
+         return {
+             "type" => "enum",
+             "name" => $_[2],
+             "body" => $_[3],
+         };
+     };
+
+enumBody : '{' enumBodyA '}' {
+             return $_[2];
+         };
+enumBodyA : {
+              return {
+                  "options" => [],
+                  "fields" => [],
+              };
+          }
+          | option enumBodyA {
+              push @{$_[2]->{"options"}}, $_[1];
+              return $_[2];
+          }
+          | enumField enumBodyA {
+              push @{$_[2]->{"fields"}}, $_[1];
+              return $_[2];
+          }
+          | emptyStatement enumBodyA { return $_[2]; }
+          ;
+
+# In another world, we might care about the enumValueOptions, but not here
+enumField : IDENT '=' enumFieldA INT_LITERAL ';' {
+              return {
+                  "type" => "enumField",
+                  "name" => $_[1],
+                  "value" => $_[4],
+              }
+          }
+          | IDENT '=' enumFieldA INT_LITERAL '[' enumValueOptions ']' ';' {
+              return {
+                  "type" => "enumField",
+                  "name" => $_[1],
+                  "value" => $_[4],
+              }
+          }
+          ;
+enumFieldA :
+           | '-'
+           ;
+enumValueOptions : enumValueOption
+                 | enumValueOption ',' enumValueOptions
+                 ;
+
+enumValueOption : optionName '=' constant;
+
+
+# Message definition #
+
+message : 'message' messageName messageBody {
+            return {
+                "type" => "message",
+                "name" => $_[2],
+                "body" => $_[3],
+            };
+        };
+
+messageBody : '{' messageBodyA '}' {
+                return $_[2];
+            };
+messageBodyA : {
+                 return {
+                     "fields" => [],
+                     "messages" => [],
+                     "enums" => [],
+                     "extends" => [],
+                     "extensions" => [],
+                     "groups" => [],
+                     "options" => [],
+                     "reserves" => [],
+                 };
+             }
+             | field messageBodyA {
+                 push @{$_[2]->{"fields"}}, $_[1];
+                 return $_[2];
+             }
+             | enum messageBodyA {
+                 push @{$_[2]->{"enums"}}, $_[1];
+                 return $_[2];
+             }
+             | message messageBodyA {
+                 push @{$_[2]->{"messages"}}, $_[1];
+                 return $_[2];
+             }
+             | extend messageBodyA {
+                 push @{$_[2]->{"extends"}}, $_[1];
+                 return $_[2];
+             }
+             | extensions messageBodyA {
+                 push @{$_[2]->{"extensions"}}, $_[1];
+                 return $_[2];
+             }
+             | group messageBodyA {
+                 push @{$_[2]->{"groups"}}, $_[1];
+                 return $_[2];
+             }
+             | option messageBodyA {
+                 push @{$_[2]->{"options"}}, $_[1];
+                 return $_[2];
+             }
+             | oneof messageBodyA {
+                 push @{$_[2]->{"fields"}}, $_[1];
+                 return $_[2];
+             }
+             | mapField messageBodyA {
+                 push @{$_[2]->{"fields"}}, $_[1];
+                 return $_[2];
+             }
+             | reserved messageBodyA {
+                 push @{$_[2]->{"reserves"}}, $_[1];
+                 return $_[2];
+             }
+             | emptyStatement messageBodyA { return $_[2] }
+             ;
+
+
+# Extend #
+
+extend : 'extend' messageType '{' extendA '}' {
+           return {
+               "type" => "extend",
+               "name" => $_[2],
+               "body" => $_[3],
+           };
+       };
+extendA : {
+            return {
+                "fields" => [],
+                "groups" => [],
+            };
+        }
+        | field extendA {
+            push @{$_[2]->{"fields"}}, $_[1];
+            return $_[2];
+        }
+        | group extendA {
+            push @{$_[2]->{"groups"}}, $_[1];
+            return $_[2];
+        }
+        | emptyStatement extendA { return $_[2]; }
+        ;
+
+
+# Service definition #
+
+service : 'service' serviceName '{' serviceA '}' {
+            return {
+                "type" => "service",
+            };
+        };
+serviceA :
+         | option serviceA
+         | rpc serviceA
+         | stream serviceA
+         | emptyStatement serviceA
+         ;
+
+rpc : 'rpc' rpcName '(' oStream messageType ')' 'returns' '(' oStream messageType ')' rpcA {
+        return {
+            "type" => "rpc",
+        };
+    };
+oStream :
+        | 'stream'
+        ;
+rpcA : '{' rpcB '}'
+     | ';'
+     ;
+rpcB :
+     | option rpcB
+     | emptyStatement rpcB
+     ;
+
+stream : 'stream' streamName '(' messageType ',' messageType ')' rpcA {
+           return {
+               "type" => "stream",
+           };
+       };
+
+
+###########################
+# Extensions and Reserved #
+###########################
+
+# Extensions #
+
+extensions : 'extensions' ranges ';' {
+               return $_[2];
+           };
+
+ranges : range rangesA {
+           push @{$_[2]}, $_[1];
+           return $_[2];
+       };
+rangesA : { return []; }
+        | ',' range rangesA {
+            push @{$_[3]}, $_[2];
+            return $_[3];
+        }
+        ;
+
+range : INT_LITERAL { return $_[1]; }
+      | INT_LITERAL 'to' INT_LITERAL {
+          return {
+              "min" => $_[1],
+              "max" => $_[3],
+          };
+      }
+      | INT_LITERAL 'to' 'max' {
+          return {
+              "min" => $_[1],
+              "max" => "max",
+          };
+      }
+      ;
+
+# Reserved #
+
+reserved : 'reserved' ranges ';' {
+             return {
+                 "type" => "ranges",
+                 "values" => $_[2],
+             };
+         }
+         | 'reserved' fieldNames ';' {
+             return {
+                 "type" => "fields",
+                 "values" => $_[2],
+             };
+         }
+         ;
+
+fieldNames : fieldName fieldNamesA {
+               push @{$_[2]}, $_[1];
+               return $_[2];
+           };
+fieldNamesA : { return []; }
+            | ',' fieldName fieldNamesA {
+                push @{$_[3]}, $_[2];
+                return $_[3];
+            }
+            ;
+
+
+##########
+# Fields #
+##########
+
+label : 'required' { return "required"; }
+      | 'optional' { return "optional"; }
+      | 'repeated' { return "repeated"; }
+      ;
+
+type : 'double' { return {"t" => "double", "c" => "primitive", "cpp" => "double"}; }
+     | 'float' { return {"t" => "float", "c" => "primitive", "cpp" => "float"}; }
+     | 'int32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
+     | 'int64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
+     | 'uint32' { return {"t" => "uint32", "c" => "primitive", "cpp" => "uint32_t"}; }
+     | 'uint64' { return {"t" => "uint64", "c" => "primitive", "cpp" => "uint64_t"}; }
+     | 'sint32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
+     | 'sint64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
+     | 'fixed32' { return {"t" => "uint32", "c" => "primitive", "cpp" => "uint32_t"}; }
+     | 'fixed64' { return {"t" => "uint64", "c" => "primitive", "cpp" => "uint64_t"}; }
+     | 'sfixed32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
+     | 'sfixed64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
+     | 'bool' { return {"t" => "boolean", "c" => "primitive", "cpp" => "bool"}; }
+     | 'string' { return {"t" => "rstring", "c" => "primitive", "cpp" => "std::string"}; }
+     | 'bytes' { return {"t" => "blob", "c" => "primitive", "cpp" => "std::string"}; }
+     | messageType { return {"t" => $_[1], "c" => "complex"}; }
+     #| enumType { return {"t" => $_[1], "c" => "enum"}; }
+     ;
+
+fieldNumber : INT_LITERAL;
+
+
+# Normal field #
+
+field : label type fieldName '=' fieldNumber fieldA ';' {
+          return {
+              "label" => $_[1],
+              "type" => $_[2]->{"c"},
+              "dataType" => $_[2]->{"t"},
+              "cppType" => $_[2]->{"cpp"},
+              "name" => $_[3],
+          };
+      };
+fieldA :
+       | '[' fieldOptions ']'
+       ;
+
+fieldOptions : fieldOption fieldOptionsA;
+fieldOptionsA :
+              | ',' fieldOption fieldOptionsA
+              ;
+
+fieldOption : optionName '=' constant;
+
+
+# Group field #
+
+group : label 'group' IDENT '=' fieldNumber messageBody {
+          return {
+              "type" => "group",
+              "name" => $_[3],
+              "body" => $_[6],
+          };
+      };
+
+
+# Oneof and oneof field #
+
+oneof : 'oneof' oneofName '{' oneofA '}' {
+          return {
+              "type" => "oneof",
+              "name" => $_[2],
+              "fields" => $_[4],
+          };
+      };
+oneofA : {
+           return [];
+       }
+       | oneofField oneofA {
+           push @{$_[2]}, $_[1];
+           return $_[2];
+       }
+       | emptyStatement oneofA {
+           return $_[2];
+       }
+       ;
+
+oneofField : type fieldName '=' fieldNumber fieldA ';' {
+               return {
+                   "label" => "optional",
+                   "type" => $_[1]->{"c"},
+                   "dataType" => $_[1]->{"t"},
+                   "name" => $_[2],
+               };
+           };
+
+
+# Map field #
+
+mapField : 'map' '<' keyType ',' type '>' mapName '=' fieldNumber fieldA ';' {
+             return {
+                 "type" => "map",
+                 "name" => $_[7],
+                 "keyType" => $_[3]->{"t"},
+                 "keyCppType" => $_[3]->{"cpp"},
+                 "valType" => $_[5]->{"c"},
+                 "valCppType" => $_[5]->{"cpp"},
+                 "valDataType" => $_[5]->{"t"},
+             };
+         };
+
+keyType : 'int32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
+        | 'int64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
+        | 'uint32' { return {"t" => "uint32", "c" => "primitive", "cpp" => "uint32_t"}; }
+        | 'uint64' { return {"t" => "uint64", "c" => "primitive", "cpp" => "uint64_t"}; }
+        | 'sint32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
+        | 'sint64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
+        | 'fixed32' { return {"t" => "uint32", "c" => "primitive", "cpp" => "uint32_t"}; }
+        | 'fixed64' { return {"t" => "uint64", "c" => "primitive", "cpp" => "uint64_t"}; }
+        | 'sfixed32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
+        | 'sfixed64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
+        | 'bool' { return {"t" => "boolean", "c" => "primitive", "cpp" => "bool"}; }
+        | 'string' { return {"t" => "rstring", "c" => "primitive", "cpp" => "std::string"}; }
+        ;
+
+
+##########
+# Option #
+##########
+
+option : 'option' optionName '=' constant ';' {
+           return {
+               "type" => "option",
+               "name" => $_[2],
+               "val" => $_[4],
+           };
+       };
+
+optionName : IDENT optionNameA
+           | '(' fullIdent ')' optionNameA
+           ;
+optionNameA :
+            | '.' IDENT optionNameA
+            ;
+
+
+###########
+# Package #
+###########
+
+package : 'package' fullIdent ';' {
+            return $_[2];
+        };
+
+
+####################
+# Import Statement #
+####################
+
+import : 'import' STR_LITERAL ';' {
+           return $_[2];
+       }
+       | 'import' 'weak' STR_LITERAL ';' {
+           return $_[2];
+       }
+       | 'import' 'public' STR_LITERAL ';' {
+           return $_[2];
+       }
+       ;
+
+
+##########
+# Syntax #
+##########
+
+syntax : 'syntax' '=' STR_LITERAL {
+           unless ($_[3] eq "\"proto2\"") {
+               die("Expected to find a proto2 file");
+           }
+           return $_[3];
+       };
+
+
+####################
+# Lexical elements #
+####################
+
+# Identifiers #
+
+fullIdent : IDENT fullIdentA {
+              return $_[1] . $_[2];
+          };
+fullIdentA : { return ""; }
+           | '.' IDENT fullIdentA {
+               return "." . $_[2] . $_[3];
+           }
+           ;
+
+messageName : IDENT;
+enumName : IDENT;
+fieldName : IDENT;
+oneofName : IDENT;
+mapName : IDENT;
+serviceName : IDENT;
+rpcName : IDENT;
+streamName : IDENT;
+
+messageType : fullIdent;
+
+#enumType : fullIdent;
+
+# EmptyStatement #
+
+emptyStatement : ';';
+
+# Constant #
+
+constant : fullIdent
+         | '-' INT_LITERAL
+         | '+' INT_LITERAL
+         | INT_LITERAL
+         | '-' FLOAT_LITERAL
+         | '+' FLOAT_LITERAL
+         | FLOAT_LITERAL
+         | STR_LITERAL
+         | BOOL_LITERAL
+         ;
+
+%%

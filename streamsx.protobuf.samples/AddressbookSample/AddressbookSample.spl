@@ -1,0 +1,40 @@
+use streamsx.protobuf::*;
+
+use tutorial::*;
+
+/**
+ * To build the SPL schema from the protobuf file, run the bin/spl-schema-from-proto command as follows:
+ * bin/spl-schema-from-proto <proto directory> <path to root protobuf file relative to proto directory>
+ * This will generate the SPL namespaces and types from the protobuf definitions and output a sample
+ * operator invocation to show how it is used.
+ */
+
+composite AddressbookSample {
+    graph
+        stream<AddressBook_pb> records = Beacon() {
+            param
+                period: 1.0;
+            output
+                records: people_=[{phones_=[{type_=Person_PhoneType_pb.Person_PhoneType_MOBILE_,number_="410-555-1212"}],email_="john.doe@google.com",id_=1234,name_="John Doe"}];
+        }
+
+        stream<blob data> serialized = ProtobufBuild(records) {
+            param
+                protoMessage: "tutorial.AddressBook";
+                protoDirectory: "impl";
+                protoRootFile: "addressbook.proto";
+        }
+
+        stream<AddressBook_pb> deserialized = ProtobufParse(serialized) {
+            param
+                dataAttribute: data;
+                protoMessage: "tutorial.AddressBook";
+                protoDirectory: "impl";
+                protoRootFile: "addressbook.proto";
+        }
+
+        () as sink = Custom(deserialized) {
+            logic
+                onTuple deserialized: println(deserialized);
+        }
+}
