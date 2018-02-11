@@ -4,7 +4,7 @@ An IBM Streams toolkit for parsing and creating Google Protocol Buffers.
 
 ## Documentation and Code
 
-[streamsx.protobuf on github](https://github.com/bmwilli/streamsx.protobuf)
+[streamsx.protobuf on github](https://github.com/IBMStreams/streamsx.protobuf)
 
 [SPLDOC for streamsx.protobuf](streamsx.protobuf/doc/spldoc/html/index.html)
 
