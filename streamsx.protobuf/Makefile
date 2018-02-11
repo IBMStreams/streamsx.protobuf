@@ -1,9 +1,12 @@
 .PHONY: all impl doc toolkit clean
 
+TOOLKITNAME = streamsx.protobuf
+TKDIR = ${TOOLKITNAME)
+
 all: impl toolkit doc
 
 doc:
-	spl-make-doc
+	spl-make-doc --include-composite-operator-diagram --author IBMStreams at GitHub - https://github.com/bmwilli/$(TOOLKITNAME} --directory $(TOOLKITNAME)
 
 impl:
 	make -C impl
