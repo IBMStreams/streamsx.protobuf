@@ -1,5 +1,6 @@
 .PHONY: all distributed clean 
 
+APPDIR = $(shell basename `pwd`)
 SPLC_FLAGS ?= -a -t ../../streamsx.protobuf:$(STREAMS_SPLPATH) -w -Wl,-rpath="'\$$\$$ORIGIN/../toolkits/$(APPDIR)/impl/lib'"
 SPLC = $(STREAMS_INSTALL)/bin/sc
 SPL_CMD_ARGS ?= 
