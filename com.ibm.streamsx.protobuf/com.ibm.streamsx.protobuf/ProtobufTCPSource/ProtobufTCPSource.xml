@@ -51,7 +51,7 @@ The `port` parameter specifies the port that the server will listen to.
         <description>Specifies the port to be used for the TCP server</description>
         <optional>false</optional>
         <rewriteAllowed>false</rewriteAllowed>
-        <expressionMode>Constant</expressionMode>
+        <expressionMode>Expression</expressionMode>
         <type>uint32</type>
         <cardinality>1</cardinality>
       </parameter>

@@ -17,10 +17,8 @@ class MY_OPERATOR : public MY_BASE_OPERATOR
 {
 public:
   typedef struct {
-      union {
-          unsigned char buffer[4];
-          uint32_t length;
-      } header;
+      unsigned char headerLengthBuffer[4];
+      uint32_t headerLength;
       unsigned char *data;
       uint32_t bufferSize;
   } ProtobufMessage;

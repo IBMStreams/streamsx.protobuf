@@ -59,6 +59,8 @@ void MY_OPERATOR::prepareToShutdown()
 void MY_OPERATOR::waitForConnection() {
     tcp::socket *socket = new tcp::socket(io_service_);
     MY_OPERATOR::ProtobufMessage *message = new MY_OPERATOR::ProtobufMessage;
+    message->bufferSize = 0;
+    message->data = NULL;
     acceptor_.async_accept(*socket,
         streams_boost::bind(&MY_OPERATOR::handleConnection, this, socket, message, streams_boost::asio::placeholders::error)
     );
@@ -70,7 +72,7 @@ void MY_OPERATOR::handleConnection(tcp::socket *socket, MY_OPERATOR::ProtobufMes
     if (!ec) {
         nConnections->incrementValue();
         streams_boost::asio::async_read(*socket,
-            streams_boost::asio::buffer(&message->header.buffer, 4),
+            streams_boost::asio::buffer(&message->headerLengthBuffer, 4),
             streams_boost::bind(&MY_OPERATOR::handleHeader, this, socket, message, streams_boost::asio::placeholders::error)
         );
     } else if (socket->is_open()) {
@@ -84,18 +86,20 @@ void MY_OPERATOR::handleConnection(tcp::socket *socket, MY_OPERATOR::ProtobufMes
 
 void MY_OPERATOR::handleHeader(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec) {
     SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Received header.", "");
+    message->headerLength = message->headerLengthBuffer[0] | message->headerLengthBuffer[1] << 8 | message->headerLengthBuffer[2] << 16 | message->headerLengthBuffer[3] << 24;
     if (!ec) {
-        if (message->bufferSize < message->header.length) {
+        if (message->bufferSize < message->headerLength) {
             if (message->data != NULL) {
                 delete message->data;
+                message->data = NULL;
             }
 
-            message->data = new unsigned char[message->header.length];
-            message->bufferSize = message->header.length;
+            message->data = new unsigned char[message->headerLength];
+            message->bufferSize = message->headerLength;
         }
-        SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Expected length " << message->header.length, "");
+        SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Expected length " << message->headerLength, "");
         streams_boost::asio::async_read(*socket,
-            streams_boost::asio::buffer(message->data, message->header.length),
+            streams_boost::asio::buffer(message->data, message->headerLength),
             streams_boost::bind(&MY_OPERATOR::handleMessage, this, socket, message, streams_boost::asio::placeholders::error)
         );
     } else if (socket->is_open()) {
@@ -119,13 +123,13 @@ void MY_OPERATOR::handleMessage(tcp::socket *socket, MY_OPERATOR::ProtobufMessag
     SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Received message body", "");
     if (!ec) {
         OPort0Type outTuple;
-        SPL::blob blobBuffer(message->data, message->header.length);
+        SPL::blob blobBuffer(message->data, message->headerLength);
         outTuple.set_<%=$outputAttribute%>(blobBuffer);
         submit(outTuple, 0);
 
         SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Waiting for next header", "");
         streams_boost::asio::async_read(*socket,
-            streams_boost::asio::buffer(&message->header.buffer, 4),
+            streams_boost::asio::buffer(&message->headerLengthBuffer, 4),
             streams_boost::bind(&MY_OPERATOR::handleHeader, this, socket, message, streams_boost::asio::placeholders::error)
         );
     } else if (socket->is_open()) {
