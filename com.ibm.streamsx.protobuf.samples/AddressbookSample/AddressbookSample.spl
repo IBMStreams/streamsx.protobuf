@@ -1,6 +1,6 @@
-use streamsx.protobuf::*;
+use com.ibm.streamsx.protobuf::*;
 
-use streamsx.protobuf.person::*;
+use tutorial::*;
 
 /**
  * To build the SPL schema from the protobuf file, run the bin/spl-schema-from-proto command as follows:
@@ -9,28 +9,28 @@ use streamsx.protobuf.person::*;
  * operator invocation to show how it is used.
  */
 
-composite BuildParseSample {
+composite AddressbookSample {
     graph
-        stream<SimplePerson_pb> records = Beacon() {
+        stream<AddressBook_pb> records = Beacon() {
             param
                 period: 1.0;
             output
-                records: name_="Methuselah", age_=950ul, category_=PersonCategory_pb.HUMAN_, numbers_=["name"];
+                records: people_=[{phones_=[{type_=Person_PhoneType_pb.Person_PhoneType_MOBILE_,number_="410-555-1212"}],email_="john.doe@google.com",id_=1234,name_="John Doe"}];
         }
 
         stream<blob data> serialized = ProtobufBuild(records) {
             param
-                protoMessage: "streamsx.protobuf.person.SimplePerson";
-                protoDirectory: ".";
-                protoRootFile: "main.proto";
+                protoMessage: "tutorial.AddressBook";
+                protoDirectory: "impl";
+                protoRootFile: "addressbook.proto";
         }
 
-        stream<SimplePerson_pb> deserialized = ProtobufParse(serialized) {
+        stream<AddressBook_pb> deserialized = ProtobufParse(serialized) {
             param
                 dataAttribute: data;
-                protoMessage: "streamsx.protobuf.person.SimplePerson";
-                protoDirectory: ".";
-                protoRootFile: "main.proto";
+                protoMessage: "tutorial.AddressBook";
+                protoDirectory: "impl";
+                protoRootFile: "addressbook.proto";
         }
 
         () as sink = Custom(deserialized) {

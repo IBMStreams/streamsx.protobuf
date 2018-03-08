@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package streamsx.protobuf.person;
+package com.ibm.streamsx.protobuf.person;
 
 enum PersonCategory {
     HUMAN = 0;

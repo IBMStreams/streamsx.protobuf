@@ -1,4 +1,4 @@
-use streamsx.protobuf::*;
+use com.ibm.streamsx.protobuf::*;
 
 composite TCPSample {
     graph

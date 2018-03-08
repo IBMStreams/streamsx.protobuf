@@ -1,6 +1,6 @@
 .PHONY: all impl doc toolkit clean
 
-TOOLKITNAME = streamsx.protobuf
+TOOLKITNAME = com.ibm.streamsx.protobuf
 TKDIR = ${TOOLKITNAME)
 
 all: impl toolkit doc

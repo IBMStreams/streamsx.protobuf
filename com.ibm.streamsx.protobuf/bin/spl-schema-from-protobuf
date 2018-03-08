@@ -8,8 +8,8 @@ mkdir -p impl/include
 
 DIR=`dirname ${BASH_SOURCE[0]}`
 if [ "$#" -eq "1" ]; then
-    PERL5LIB=$DIR/../streamsx.protobuf/Common perl $DIR/protoToTuple.pl . $1
+    PERL5LIB=$DIR/../com.ibm.streamsx.protobuf/Common perl $DIR/protoToTuple.pl . $1
 else
-    PERL5LIB=$DIR/../streamsx.protobuf/Common perl $DIR/protoToTuple.pl $1 $2
+    PERL5LIB=$DIR/../com.ibm.streamsx.protobuf/Common perl $DIR/protoToTuple.pl $1 $2
 fi
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <toolkitInfoModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xsi:schemaLocation="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo toolkitInfoModel.xsd">
   <identity>
-    <name>streamsx.protobuf</name>
+    <name>com.ibm.streamsx.protobuf</name>
     <description><![CDATA[
 IBM Streams Protobuf Toolkit
 
@@ -141,7 +141,7 @@ Some older versions of the `protoc` compiler do not require the first line to st
 parser requires the statement to be present regardless of the version of `protoc` installed.
 ]]>
     </description>
-    <version>1.0.0.0</version>
+    <version>1.0.0.1</version>
     <requiredProductVersion>4.0.0.0</requiredProductVersion> 
   </identity>
   <dependencies/>
