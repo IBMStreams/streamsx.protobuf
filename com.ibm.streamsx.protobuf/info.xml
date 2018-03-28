@@ -141,7 +141,7 @@ Some older versions of the `protoc` compiler do not require the first line to st
 parser requires the statement to be present regardless of the version of `protoc` installed.
 ]]>
     </description>
-    <version>1.0.0.3</version>
+    <version>1.0.0.4</version>
     <requiredProductVersion>4.0.0.0</requiredProductVersion> 
   </identity>
   <dependencies/>

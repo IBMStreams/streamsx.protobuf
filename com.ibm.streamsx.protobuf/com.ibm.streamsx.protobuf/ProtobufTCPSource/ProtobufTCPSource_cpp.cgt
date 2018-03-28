@@ -36,6 +36,7 @@ MY_OPERATOR::MY_OPERATOR()
     // Initialization code goes here    
     OperatorMetrics & opm = getContext().getMetrics();
     nConnections = &opm.createCustomMetric("nConnections", "Number of connections currently active", Metric::Counter);
+    nBytesReceived = &opm.createCustomMetric("nBytesReceived", "Number of total bytes processed", Metric::Counter);
 }
 
 // Destructor
@@ -134,6 +135,8 @@ void MY_OPERATOR::handleMessage(tcp::socket *socket, MY_OPERATOR::ProtobufMessag
             streams_boost::asio::buffer(&message->headerLengthBuffer, 4),
             streams_boost::bind(&MY_OPERATOR::handleHeader, this, socket, message, streams_boost::asio::placeholders::error)
         );
+
+        nBytesReceived->incrementValue(message->headerLength + 4);
     } else if (socket->is_open()) {
         if (message != NULL) {
             if (message->data != NULL) {

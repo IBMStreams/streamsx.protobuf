@@ -32,9 +32,6 @@ public:
   // Notify port readiness
   void allPortsReady(); 
 
-  // Submit a tuple
-  static void * tupleSubmit(void * voidPtr);
-
   // Notify termination
   void prepareToShutdown(); 
 
@@ -60,6 +57,7 @@ public:
   tcp::acceptor acceptor_;
 
   Metric *nConnections;
+  Metric *nBytesReceived;
 }; 
 
 <%SPL::CodeGen::headerEpilogue($model);%>
