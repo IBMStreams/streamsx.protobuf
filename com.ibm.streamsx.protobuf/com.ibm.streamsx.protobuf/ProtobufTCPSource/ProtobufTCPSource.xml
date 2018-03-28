@@ -55,6 +55,15 @@ The `port` parameter specifies the port that the server will listen to.
         <type>uint32</type>
         <cardinality>1</cardinality>
       </parameter>
+      <parameter>
+        <name>workerThreads</name>
+        <description>The number of threads to process incoming data from the clients</description>
+        <optional>true</optional>
+        <rewriteAllowed>false</rewriteAllowed>
+        <expressionMode>Expression</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
     </parameters>
     <inputPorts>
     </inputPorts>

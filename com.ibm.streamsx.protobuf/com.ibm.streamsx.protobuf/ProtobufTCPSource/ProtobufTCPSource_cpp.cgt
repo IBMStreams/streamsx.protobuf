@@ -24,6 +24,8 @@ if (defined $model->getOutputPortAt(0)) {
 }
 
 my $port = $model->getParameterByName("port")->getValueAt(0)->getCppExpression();
+my $workerThreadsParam = $model->getParameterByName("workerThreads");
+my $workerThreads = (not $workerThreadsParam) ? 1 : $workerThreadsParam->getValueAt(0)->getCppExpression();
 
 %>
 
@@ -45,8 +47,8 @@ MY_OPERATOR::~MY_OPERATOR()
 // Notify port readiness
 void MY_OPERATOR::allPortsReady() 
 {
-    // Create worker thread
-    createThreads(1);
+    // Create worker thread(s)
+    createThreads(<%=$workerThreads%>);
 }
  
 // Notify pending shutdown
@@ -85,7 +87,7 @@ void MY_OPERATOR::handleConnection(tcp::socket *socket, MY_OPERATOR::ProtobufMes
 }
 
 void MY_OPERATOR::handleHeader(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec) {
-    SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Received header.", "");
+    SPLAPPTRC(L_TRACE, "[ProtobufTCPSource] Received header.", "");
     message->headerLength = message->headerLengthBuffer[0] | message->headerLengthBuffer[1] << 8 | message->headerLengthBuffer[2] << 16 | message->headerLengthBuffer[3] << 24;
     if (!ec) {
         if (message->bufferSize < message->headerLength) {
@@ -97,7 +99,7 @@ void MY_OPERATOR::handleHeader(tcp::socket *socket, MY_OPERATOR::ProtobufMessage
             message->data = new unsigned char[message->headerLength];
             message->bufferSize = message->headerLength;
         }
-        SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Expected length " << message->headerLength, "");
+        SPLAPPTRC(L_TRACE, "[ProtobufTCPSource] Expected length " << message->headerLength, "");
         streams_boost::asio::async_read(*socket,
             streams_boost::asio::buffer(message->data, message->headerLength),
             streams_boost::bind(&MY_OPERATOR::handleMessage, this, socket, message, streams_boost::asio::placeholders::error)
@@ -120,14 +122,14 @@ void MY_OPERATOR::handleHeader(tcp::socket *socket, MY_OPERATOR::ProtobufMessage
 }
 
 void MY_OPERATOR::handleMessage(tcp::socket *socket, MY_OPERATOR::ProtobufMessage *message, const streams_boost::system::error_code & ec) {
-    SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Received message body", "");
+    SPLAPPTRC(L_TRACE, "[ProtobufTCPSource] Received message body", "");
     if (!ec) {
         OPort0Type outTuple;
         SPL::blob blobBuffer(message->data, message->headerLength);
         outTuple.set_<%=$outputAttribute%>(blobBuffer);
         submit(outTuple, 0);
 
-        SPLAPPTRC(L_INFO, "[ProtobufTCPSource] Waiting for next header", "");
+        SPLAPPTRC(L_TRACE, "[ProtobufTCPSource] Waiting for next header", "");
         streams_boost::asio::async_read(*socket,
             streams_boost::asio::buffer(&message->headerLengthBuffer, 4),
             streams_boost::bind(&MY_OPERATOR::handleHeader, this, socket, message, streams_boost::asio::placeholders::error)
