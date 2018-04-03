@@ -159,7 +159,8 @@ void MY_OPERATOR::process(uint32_t idx)
 {
     if (idx == 0) {
         try {
-            SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Starting server on port " << <%=$port%>, "");
+            int port = <%=$port%>;
+            SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Starting server on port " << port, "");
 
             this->waitForConnection();
             SPLAPPTRC(L_DEBUG, "[ProtobufTCPSource] Running I/O service.", "");
