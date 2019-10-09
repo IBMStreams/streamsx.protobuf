@@ -148,7 +148,7 @@ sub generateVariableMapping {
                 if ($field->{"dataType"} eq "blob") {
                     my $assignmentValue = "$protoGetter";
                     unless ($field->{"name"} eq "") {
-                        $assignmentValue = "$protoGetter." . $field->{"name"} . "()";
+                        $assignmentValue = "$protoGetter." . lc($field->{"name"}) . "()";
                     }
 
                     my $blobValue = "SPL::blob((const unsigned char *) $assignmentValue.data(), $assignmentValue.size())";

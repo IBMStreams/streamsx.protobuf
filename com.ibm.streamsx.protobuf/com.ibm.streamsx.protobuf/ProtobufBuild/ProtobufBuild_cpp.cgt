@@ -348,7 +348,7 @@ void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
     foreach my $field (@{$rootField->{"fields"}}) {
         my $splType = "IPort0Type::" . $field->{"name"} . "__type";
         my $assign = sub {
-            print "\t$rootVarName.set_" . $field->{"name"} . "($_[0]);\n";
+            print "\t$rootVarName.set_" . lc($field->{"name"}) . "($_[0]);\n";
         };
         if ($field->{"label"} eq "repeated") {
 
