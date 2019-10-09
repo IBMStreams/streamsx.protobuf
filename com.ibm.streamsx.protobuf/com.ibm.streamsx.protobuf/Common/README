@@ -1,0 +1,4 @@
+To generate new parser from grammer.yp:
+
+yum install perl-Parse-Yapp
+yapp -m Protoparser grammer.yp

@@ -317,8 +317,8 @@ label : 'required' { return "required"; }
       | 'repeated' { return "repeated"; }
       ;
 
-type : 'double' { return {"t" => "double", "c" => "primitive", "cpp" => "double"}; }
-     | 'float' { return {"t" => "float", "c" => "primitive", "cpp" => "float"}; }
+type : 'double' { return {"t" => "float64", "c" => "primitive", "cpp" => "double"}; }
+     | 'float' { return {"t" => "float32", "c" => "primitive", "cpp" => "float"}; }
      | 'int32' { return {"t" => "int32", "c" => "primitive", "cpp" => "int32_t"}; }
      | 'int64' { return {"t" => "int64", "c" => "primitive", "cpp" => "int64_t"}; }
      | 'uint32' { return {"t" => "uint32", "c" => "primitive", "cpp" => "uint32_t"}; }

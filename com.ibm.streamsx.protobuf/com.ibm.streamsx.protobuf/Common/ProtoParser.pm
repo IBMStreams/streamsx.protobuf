@@ -2719,13 +2719,13 @@ sub
 		 'type', 1,
 sub
 #line 320 "grammar.yp"
-{ return {"t" => "double", "c" => "primitive", "cpp" => "double"}; }
+{ return {"t" => "float64", "c" => "primitive", "cpp" => "double"}; }
 	],
 	[#Rule 75
 		 'type', 1,
 sub
 #line 321 "grammar.yp"
-{ return {"t" => "float", "c" => "primitive", "cpp" => "float"}; }
+{ return {"t" => "float32", "c" => "primitive", "cpp" => "float"}; }
 	],
 	[#Rule 76
 		 'type', 1,
